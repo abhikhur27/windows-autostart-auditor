@@ -181,7 +181,8 @@ static class AutostartScanner
 
         foreach (var path in Directory.EnumerateFiles(folderPath))
         {
-            yield return BuildEntry(sourceType, scope, Path.GetFileName(path), path, path);
+            var resolvedTarget = ShortcutResolver.TryResolve(path) ?? path;
+            yield return BuildEntry(sourceType, scope, Path.GetFileName(path), path, resolvedTarget);
         }
     }
 
@@ -262,6 +263,7 @@ static class AutostartScanner
                 "temp or downloads path" => 15,
                 "network path" => 20,
                 "disabled task" => 5,
+                "encoded or hidden powershell" => 20,
                 _ => 10,
             };
         }
@@ -330,6 +332,15 @@ static class CommandInspection
             signals.Add("script host");
         }
 
+        if (lowerCommand.Contains("powershell")
+            && (lowerCommand.Contains("-enc")
+                || lowerCommand.Contains("-encodedcommand")
+                || lowerCommand.Contains("-windowstyle hidden")
+                || lowerCommand.Contains("-w hidden")))
+        {
+            signals.Add("encoded or hidden powershell");
+        }
+
         if (lowerPath.StartsWith(@"\\", StringComparison.Ordinal))
         {
             signals.Add("network path");
@@ -346,6 +357,66 @@ static class CommandInspection
         }
 
         return signals;
+    }
+}
+
+static class ShortcutResolver
+{
+    public static string? TryResolve(string path)
+    {
+        if (!path.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase))
+        {
+            return path;
+        }
+
+        var shellType = Type.GetTypeFromProgID("WScript.Shell");
+        if (shellType is null)
+        {
+            return null;
+        }
+
+        dynamic? shell = null;
+        dynamic? shortcut = null;
+        try
+        {
+            shell = Activator.CreateInstance(shellType);
+            shortcut = shell?.CreateShortcut(path);
+            var target = shortcut?.TargetPath as string;
+            if (string.IsNullOrWhiteSpace(target))
+            {
+                return path;
+            }
+
+            return Environment.ExpandEnvironmentVariables(target);
+        }
+        catch
+        {
+            return path;
+        }
+        finally
+        {
+            if (shortcut is not null)
+            {
+                try
+                {
+                    System.Runtime.InteropServices.Marshal.FinalReleaseComObject(shortcut);
+                }
+                catch
+                {
+                }
+            }
+
+            if (shell is not null)
+            {
+                try
+                {
+                    System.Runtime.InteropServices.Marshal.FinalReleaseComObject(shell);
+                }
+                catch
+                {
+                }
+            }
+        }
     }
 }
 

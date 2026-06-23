@@ -12,7 +12,9 @@ Practical C# command-line utility that inventories Windows autostart surfaces so
 
 - consolidated autostart inventory across the common Windows launch surfaces
 - missing or stale targets
+- startup-folder shortcuts resolved to their underlying target paths
 - script-host launches (`powershell`, `cmd`, `wscript`, `cscript`)
+- encoded or hidden PowerShell launches
 - network-path launches
 - entries rooted in temp or downloads paths
 - sortable risk scores so the first cleanup pass starts where it matters
